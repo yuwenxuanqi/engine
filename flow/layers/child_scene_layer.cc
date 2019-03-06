@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,7 +19,7 @@ void ChildSceneLayer::Paint(PaintContext& context) const {
 }
 
 void ChildSceneLayer::UpdateScene(SceneUpdateContext& context) {
-  FXL_DCHECK(needs_system_composite());
+  FML_DCHECK(needs_system_composite());
 
   // TODO(MZ-191): Set clip.
   // It's worth asking whether all children should be clipped implicitly

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,6 +20,11 @@
 - (void)dealloc {
   [_lifeCycleDelegate release];
   [super dealloc];
+}
+
+- (BOOL)application:(UIApplication*)application
+    willFinishLaunchingWithOptions:(NSDictionary*)launchOptions {
+  return [_lifeCycleDelegate application:application willFinishLaunchingWithOptions:launchOptions];
 }
 
 - (BOOL)application:(UIApplication*)application
@@ -66,11 +71,14 @@
   [_lifeCycleDelegate applicationWillTerminate:application];
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 - (void)application:(UIApplication*)application
     didRegisterUserNotificationSettings:(UIUserNotificationSettings*)notificationSettings {
   [_lifeCycleDelegate application:application
       didRegisterUserNotificationSettings:notificationSettings];
 }
+#pragma GCC diagnostic pop
 
 - (void)application:(UIApplication*)application
     didRegisterForRemoteNotificationsWithDeviceToken:(NSData*)deviceToken {
@@ -84,6 +92,23 @@
   [_lifeCycleDelegate application:application
       didReceiveRemoteNotification:userInfo
             fetchCompletionHandler:completionHandler];
+}
+
+- (void)application:(UIApplication*)application
+    didReceiveLocalNotification:(UILocalNotification*)notification {
+  [_lifeCycleDelegate application:application didReceiveLocalNotification:notification];
+}
+
+- (void)userNotificationCenter:(UNUserNotificationCenter*)center
+       willPresentNotification:(UNNotification*)notification
+         withCompletionHandler:
+             (void (^)(UNNotificationPresentationOptions options))completionHandler
+    API_AVAILABLE(ios(10)) {
+  if (@available(iOS 10.0, *)) {
+    [_lifeCycleDelegate userNotificationCenter:center
+                       willPresentNotification:notification
+                         withCompletionHandler:completionHandler];
+  }
 }
 
 - (BOOL)application:(UIApplication*)application
@@ -127,9 +152,16 @@
   [_lifeCycleDelegate application:application performFetchWithCompletionHandler:completionHandler];
 }
 
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 120000
 - (BOOL)application:(UIApplication*)application
     continueUserActivity:(NSUserActivity*)userActivity
-      restorationHandler:(void (^)(NSArray*))restorationHandler {
+      restorationHandler:(void (^)(NSArray<id<UIUserActivityRestoring>>* __nullable
+                                       restorableObjects))restorationHandler {
+#else
+- (BOOL)application:(UIApplication*)application
+    continueUserActivity:(NSUserActivity*)userActivity
+      restorationHandler:(void (^)(NSArray* __nullable restorableObjects))restorationHandler {
+#endif
   return [_lifeCycleDelegate application:application
                     continueUserActivity:userActivity
                       restorationHandler:restorationHandler];

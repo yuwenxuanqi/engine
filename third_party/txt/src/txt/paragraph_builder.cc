@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "lib/fxl/logging.h"
+#include "flutter/fml/logging.h"
 
 #include <list>
 
@@ -84,6 +84,7 @@ std::unique_ptr<Paragraph> ParagraphBuilder::Build() {
   paragraph->SetText(std::move(text_), std::move(runs_));
   paragraph->SetParagraphStyle(paragraph_style_);
   paragraph->SetFontCollection(font_collection_);
+  SetParagraphStyle(paragraph_style_);
   return paragraph;
 }
 

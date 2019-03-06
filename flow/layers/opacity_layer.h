@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,6 +15,9 @@ class OpacityLayer : public ContainerLayer {
   ~OpacityLayer() override;
 
   void set_alpha(int alpha) { alpha_ = alpha; }
+  void set_offset(const SkPoint& offset) { offset_ = offset; }
+
+  void Preroll(PrerollContext* context, const SkMatrix& matrix) override;
 
   void Paint(PaintContext& context) const override;
 
@@ -23,8 +26,9 @@ class OpacityLayer : public ContainerLayer {
 
  private:
   int alpha_;
+  SkPoint offset_;
 
-  FXL_DISALLOW_COPY_AND_ASSIGN(OpacityLayer);
+  FML_DISALLOW_COPY_AND_ASSIGN(OpacityLayer);
 };
 
 }  // namespace flow

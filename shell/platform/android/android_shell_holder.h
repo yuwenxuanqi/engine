@@ -1,4 +1,4 @@
-// Copyright 2018 The Flutter Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,21 +7,22 @@
 
 #include <memory>
 
+#include "flutter/fml/macros.h"
 #include "flutter/fml/platform/android/jni_weak_ref.h"
+#include "flutter/fml/unique_fd.h"
 #include "flutter/lib/ui/window/viewport_metrics.h"
 #include "flutter/shell/common/run_configuration.h"
 #include "flutter/shell/common/shell.h"
 #include "flutter/shell/common/thread_host.h"
 #include "flutter/shell/platform/android/platform_view_android.h"
-#include "lib/fxl/files/unique_fd.h"
-#include "lib/fxl/macros.h"
 
 namespace shell {
 
 class AndroidShellHolder {
  public:
   AndroidShellHolder(blink::Settings settings,
-                     fml::jni::JavaObjectWeakGlobalRef java_object);
+                     fml::jni::JavaObjectWeakGlobalRef java_object,
+                     bool is_background_view);
 
   ~AndroidShellHolder();
 
@@ -51,10 +52,11 @@ class AndroidShellHolder {
   std::unique_ptr<Shell> shell_;
   bool is_valid_ = false;
   pthread_key_t thread_destruct_key_;
+  uint64_t next_pointer_flow_id_;
 
   static void ThreadDestructCallback(void* value);
 
-  FXL_DISALLOW_COPY_AND_ASSIGN(AndroidShellHolder);
+  FML_DISALLOW_COPY_AND_ASSIGN(AndroidShellHolder);
 };
 
 }  // namespace shell

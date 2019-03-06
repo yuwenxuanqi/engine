@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,14 +12,14 @@
 
 #import <UIKit/UIKit.h>
 
+#include "flutter/fml/macros.h"
 #include "flutter/fml/memory/weak_ptr.h"
 #include "flutter/fml/platform/darwin/scoped_nsobject.h"
-#include "flutter/lib/ui/semantics/semantics_node.h"
 #include "flutter/lib/ui/semantics/custom_accessibility_action.h"
+#include "flutter/lib/ui/semantics/semantics_node.h"
 #include "flutter/shell/platform/darwin/ios/framework/Headers/FlutterChannels.h"
 #include "flutter/shell/platform/darwin/ios/framework/Source/FlutterTextInputPlugin.h"
 #include "flutter/shell/platform/darwin/ios/framework/Source/FlutterView.h"
-#include "lib/fxl/macros.h"
 #include "third_party/skia/include/core/SkMatrix44.h"
 #include "third_party/skia/include/core/SkRect.h"
 
@@ -116,9 +116,12 @@ class AccessibilityBridge final {
   AccessibilityBridge(UIView* view, PlatformViewIOS* platform_view);
   ~AccessibilityBridge();
 
-  void UpdateSemantics(blink::SemanticsNodeUpdates nodes, blink::CustomAccessibilityActionUpdates actions);
+  void UpdateSemantics(blink::SemanticsNodeUpdates nodes,
+                       blink::CustomAccessibilityActionUpdates actions);
   void DispatchSemanticsAction(int32_t id, blink::SemanticsAction action);
-  void DispatchSemanticsAction(int32_t id, blink::SemanticsAction action, std::vector<uint8_t> args);
+  void DispatchSemanticsAction(int32_t id,
+                               blink::SemanticsAction action,
+                               std::vector<uint8_t> args);
 
   UIView<UITextInput>* textInputView();
 
@@ -126,11 +129,12 @@ class AccessibilityBridge final {
 
   fml::WeakPtr<AccessibilityBridge> GetWeakPtr();
 
+  void clearState();
+
  private:
   SemanticsObject* GetOrCreateObject(int32_t id, blink::SemanticsNodeUpdates& updates);
   void VisitObjectsRecursivelyAndRemove(SemanticsObject* object,
                                         NSMutableArray<NSNumber*>* doomed_uids);
-  void ReleaseObjects(std::unordered_map<int, SemanticsObject*>& objects);
   void HandleEvent(NSDictionary<NSString*, id>* annotatedEvent);
 
   UIView* view_;
@@ -142,7 +146,7 @@ class AccessibilityBridge final {
   std::unordered_map<int32_t, blink::CustomAccessibilityAction> actions_;
   std::vector<int32_t> previous_routes_;
 
-  FXL_DISALLOW_COPY_AND_ASSIGN(AccessibilityBridge);
+  FML_DISALLOW_COPY_AND_ASSIGN(AccessibilityBridge);
 };
 
 }  // namespace shell

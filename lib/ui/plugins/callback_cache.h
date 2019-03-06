@@ -1,4 +1,4 @@
-// Copyright 2018 The Flutter Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,12 +10,9 @@
 #include <mutex>
 #include <string>
 
+#include "flutter/fml/macros.h"
 #include "flutter/fml/synchronization/thread_annotations.h"
-#include "lib/fxl/macros.h"
 #include "third_party/dart/runtime/include/dart_api.h"
-
-#define DART_CALLBACK_INVALID_HANDLE -1
-#define LOCK_UNLOCK(m) FML_ACQUIRE(m) FML_RELEASE(m)
 
 namespace blink {
 
@@ -27,27 +24,35 @@ typedef struct {
 
 class DartCallbackCache {
  public:
+  static void SetCachePath(const std::string& path);
+  static std::string GetCachePath() { return cache_path_; }
+
   static int64_t GetCallbackHandle(const std::string& name,
                                    const std::string& class_name,
                                    const std::string& library_path)
-      LOCK_UNLOCK(mutex_);
+      FML_LOCKS_EXCLUDED(mutex_);
 
-  static Dart_Handle GetCallback(int64_t handle) LOCK_UNLOCK(mutex_);
+  static Dart_Handle GetCallback(int64_t handle) FML_LOCKS_EXCLUDED(mutex_);
 
   static std::unique_ptr<DartCallbackRepresentation> GetCallbackInformation(
-      int64_t handle) LOCK_UNLOCK(mutex_);
+      int64_t handle) FML_LOCKS_EXCLUDED(mutex_);
+
+  static void LoadCacheFromDisk() FML_LOCKS_EXCLUDED(mutex_);
 
  private:
   static Dart_Handle LookupDartClosure(const std::string& name,
                                        const std::string& class_name,
                                        const std::string& library_path);
 
+  static void SaveCacheToDisk() FML_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   static std::mutex mutex_;
+  static std::string cache_path_;
 
   static std::map<int64_t, DartCallbackRepresentation> cache_
       FML_GUARDED_BY(mutex_);
 
-  FXL_DISALLOW_IMPLICIT_CONSTRUCTORS(DartCallbackCache);
+  FML_DISALLOW_IMPLICIT_CONSTRUCTORS(DartCallbackCache);
 };
 
 }  // namespace blink

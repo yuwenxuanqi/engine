@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,12 +29,12 @@ class MessageLoopDarwin : public MessageLoopImpl {
 
   void Terminate() override;
 
-  void WakeUp(fxl::TimePoint time_point) override;
+  void WakeUp(fml::TimePoint time_point) override;
 
   static void OnTimerFire(CFRunLoopTimerRef timer, MessageLoopDarwin* loop);
 
-  FRIEND_MAKE_REF_COUNTED(MessageLoopDarwin);
-  FRIEND_REF_COUNTED_THREAD_SAFE(MessageLoopDarwin);
+  FML_FRIEND_MAKE_REF_COUNTED(MessageLoopDarwin);
+  FML_FRIEND_REF_COUNTED_THREAD_SAFE(MessageLoopDarwin);
   FML_DISALLOW_COPY_AND_ASSIGN(MessageLoopDarwin);
 };
 

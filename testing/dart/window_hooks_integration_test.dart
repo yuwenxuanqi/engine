@@ -1,16 +1,19 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// HACK: pretend to be dart.ui in order to access its internals
+library dart.ui;
+
 import 'dart:async';
-import 'dart:typed_data';
+// this needs to be imported because painting.dart expects it this way
+import 'dart:collection' as collection;
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:math' as math;
-import 'dart:nativewrappers';
+import 'dart:nativewrappers'; // ignore: unused_import
+import 'dart:typed_data';
 
-// this needs to be imported because painting.dart expects it this way
-import 'dart:collection' as collection;
 
 import 'package:test/test.dart';
 
@@ -63,6 +66,12 @@ void main() {
       window.onTextScaleFactorChanged = originalOnTextScaleFactorChanged;
     });
 
+    test('updateUserSettings can handle an empty object', () {
+      // this should now throw.
+      _updateUserSettingsData('{}');
+      expect(true, equals(true));
+    });
+
     test('onMetricsChanged preserves callback zone', () {
       Zone innerZone;
       Zone runZone;
@@ -96,7 +105,7 @@ void main() {
         };
       });
 
-      _updateLocale('en', 'US');
+      _updateLocales(<String>['en', 'US', '', '']);
       expect(runZone, isNotNull);
       expect(runZone, same(innerZone));
       expect(locale, equals(const Locale('en', 'US')));
@@ -236,6 +245,26 @@ void main() {
       expect(runZone, isNotNull);
       expect(runZone, same(innerZone));
       expect(textScaleFactor, equals(0.5));
+    });
+
+    test('onThemeBrightnessMode preserves callback zone', () {
+      Zone innerZone;
+      Zone runZone;
+      Brightness platformBrightness;
+
+      runZoned(() {
+        innerZone = Zone.current;
+        window.onPlatformBrightnessChanged = () {
+          runZone = Zone.current;
+          platformBrightness = window.platformBrightness;
+        };
+      });
+
+      window.onPlatformBrightnessChanged();
+      _updatePlatformBrightness('dark');
+      expect(runZone, isNotNull);
+      expect(runZone, same(innerZone));
+      expect(platformBrightness, equals(Brightness.dark));
     });
   });
 }

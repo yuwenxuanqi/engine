@@ -1,4 +1,4 @@
-// Copyright 2017 The Flutter Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@ namespace blink {
 
 class NativeLibrarySnapshotBuffer final : public DartSnapshotBuffer {
  public:
-  NativeLibrarySnapshotBuffer(fxl::RefPtr<fml::NativeLibrary> library,
+  NativeLibrarySnapshotBuffer(fml::RefPtr<fml::NativeLibrary> library,
                               const char* symbol_name)
       : library_(std::move(library)) {
     if (library_) {
@@ -25,30 +25,29 @@ class NativeLibrarySnapshotBuffer final : public DartSnapshotBuffer {
   size_t GetSnapshotSize() const override { return 0; }
 
  private:
-  fxl::RefPtr<fml::NativeLibrary> library_;
+  fml::RefPtr<fml::NativeLibrary> library_;
   const uint8_t* symbol_ = nullptr;
 
-  FXL_DISALLOW_COPY_AND_ASSIGN(NativeLibrarySnapshotBuffer);
+  FML_DISALLOW_COPY_AND_ASSIGN(NativeLibrarySnapshotBuffer);
 };
 
-class FileSnapshotBuffer final : public DartSnapshotBuffer {
+class MappingBuffer final : public DartSnapshotBuffer {
  public:
-  FileSnapshotBuffer(const char* path, bool executable)
-      : mapping_(path, executable) {
-    if (mapping_.GetSize() > 0) {
-      symbol_ = mapping_.GetMapping();
-    }
+  MappingBuffer(std::unique_ptr<fml::Mapping> mapping)
+      : mapping_(std::move(mapping)) {
+    FML_DCHECK(mapping_);
   }
 
-  const uint8_t* GetSnapshotPointer() const override { return symbol_; }
+  const uint8_t* GetSnapshotPointer() const override {
+    return mapping_->GetMapping();
+  }
 
-  size_t GetSnapshotSize() const override { return mapping_.GetSize(); }
+  size_t GetSnapshotSize() const override { return mapping_->GetSize(); }
 
  private:
-  fml::FileMapping mapping_;
-  const uint8_t* symbol_ = nullptr;
+  std::unique_ptr<fml::Mapping> mapping_;
 
-  FXL_DISALLOW_COPY_AND_ASSIGN(FileSnapshotBuffer);
+  FML_DISALLOW_COPY_AND_ASSIGN(MappingBuffer);
 };
 
 class UnmanagedAllocation final : public DartSnapshotBuffer {
@@ -62,12 +61,12 @@ class UnmanagedAllocation final : public DartSnapshotBuffer {
  private:
   const uint8_t* allocation_;
 
-  FXL_DISALLOW_COPY_AND_ASSIGN(UnmanagedAllocation);
+  FML_DISALLOW_COPY_AND_ASSIGN(UnmanagedAllocation);
 };
 
 std::unique_ptr<DartSnapshotBuffer>
 DartSnapshotBuffer::CreateWithSymbolInLibrary(
-    fxl::RefPtr<fml::NativeLibrary> library,
+    fml::RefPtr<fml::NativeLibrary> library,
     const char* symbol_name) {
   auto source = std::make_unique<NativeLibrarySnapshotBuffer>(
       std::move(library), symbol_name);
@@ -75,10 +74,19 @@ DartSnapshotBuffer::CreateWithSymbolInLibrary(
 }
 
 std::unique_ptr<DartSnapshotBuffer>
-DartSnapshotBuffer::CreateWithContentsOfFile(const char* file_path,
-                                             bool executable) {
-  auto source = std::make_unique<FileSnapshotBuffer>(file_path, executable);
-  return source->GetSnapshotPointer() == nullptr ? nullptr : std::move(source);
+DartSnapshotBuffer::CreateWithContentsOfFile(
+    const fml::UniqueFD& fd,
+    std::initializer_list<fml::FileMapping::Protection> protection) {
+  return CreateWithMapping(std::make_unique<fml::FileMapping>(fd, protection));
+}
+
+std::unique_ptr<DartSnapshotBuffer> DartSnapshotBuffer::CreateWithMapping(
+    std::unique_ptr<fml::Mapping> mapping) {
+  if (mapping == nullptr || mapping->GetSize() == 0 ||
+      mapping->GetMapping() == nullptr) {
+    return nullptr;
+  }
+  return std::make_unique<MappingBuffer>(std::move(mapping));
 }
 
 std::unique_ptr<DartSnapshotBuffer>

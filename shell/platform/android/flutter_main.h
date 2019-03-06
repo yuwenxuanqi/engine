@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include <jni.h>
 
 #include "flutter/common/settings.h"
-#include "lib/fxl/macros.h"
+#include "flutter/fml/macros.h"
 
 namespace shell {
 
@@ -31,9 +31,11 @@ class FlutterMain {
                    jclass clazz,
                    jobject context,
                    jobjectArray jargs,
-                   jstring bundlePath);
+                   jstring bundlePath,
+                   jstring appRootPath,
+                   jstring engineCachesPath);
 
-  FXL_DISALLOW_COPY_AND_ASSIGN(FlutterMain);
+  FML_DISALLOW_COPY_AND_ASSIGN(FlutterMain);
 };
 
 }  // namespace shell

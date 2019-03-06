@@ -1,64 +1,64 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "flutter/runtime/runtime_controller.h"
 
 #include "flutter/fml/message_loop.h"
-#include "flutter/glue/trace_event.h"
+#include "flutter/fml/trace_event.h"
 #include "flutter/lib/ui/compositing/scene.h"
 #include "flutter/lib/ui/ui_dart_state.h"
 #include "flutter/lib/ui/window/window.h"
 #include "flutter/runtime/runtime_delegate.h"
-#include "lib/tonic/dart_message_handler.h"
-
-#ifdef ERROR
-#undef ERROR
-#endif
+#include "third_party/tonic/dart_message_handler.h"
 
 namespace blink {
 
 RuntimeController::RuntimeController(
     RuntimeDelegate& p_client,
     DartVM* p_vm,
-    fxl::RefPtr<DartSnapshot> p_isolate_snapshot,
-    fxl::RefPtr<DartSnapshot> p_shared_snapshot,
+    fml::RefPtr<DartSnapshot> p_isolate_snapshot,
+    fml::RefPtr<DartSnapshot> p_shared_snapshot,
     TaskRunners p_task_runners,
-    fml::WeakPtr<GrContext> p_resource_context,
-    fxl::RefPtr<flow::SkiaUnrefQueue> p_unref_queue,
+    fml::WeakPtr<SnapshotDelegate> p_snapshot_delegate,
+    fml::WeakPtr<IOManager> p_io_manager,
     std::string p_advisory_script_uri,
-    std::string p_advisory_script_entrypoint)
+    std::string p_advisory_script_entrypoint,
+    std::function<void(int64_t)> p_idle_notification_callback)
     : RuntimeController(p_client,
                         p_vm,
                         std::move(p_isolate_snapshot),
                         std::move(p_shared_snapshot),
                         std::move(p_task_runners),
-                        std::move(p_resource_context),
-                        std::move(p_unref_queue),
+                        std::move(p_snapshot_delegate),
+                        std::move(p_io_manager),
                         std::move(p_advisory_script_uri),
                         std::move(p_advisory_script_entrypoint),
+                        p_idle_notification_callback,
                         WindowData{/* default window data */}) {}
 
 RuntimeController::RuntimeController(
     RuntimeDelegate& p_client,
     DartVM* p_vm,
-    fxl::RefPtr<DartSnapshot> p_isolate_snapshot,
-    fxl::RefPtr<DartSnapshot> p_shared_snapshot,
+    fml::RefPtr<DartSnapshot> p_isolate_snapshot,
+    fml::RefPtr<DartSnapshot> p_shared_snapshot,
     TaskRunners p_task_runners,
-    fml::WeakPtr<GrContext> p_resource_context,
-    fxl::RefPtr<flow::SkiaUnrefQueue> p_unref_queue,
+    fml::WeakPtr<SnapshotDelegate> p_snapshot_delegate,
+    fml::WeakPtr<IOManager> p_io_manager,
     std::string p_advisory_script_uri,
     std::string p_advisory_script_entrypoint,
+    std::function<void(int64_t)> idle_notification_callback,
     WindowData p_window_data)
     : client_(p_client),
       vm_(p_vm),
       isolate_snapshot_(std::move(p_isolate_snapshot)),
       shared_snapshot_(std::move(p_shared_snapshot)),
       task_runners_(p_task_runners),
-      resource_context_(p_resource_context),
-      unref_queue_(p_unref_queue),
+      snapshot_delegate_(p_snapshot_delegate),
+      io_manager_(p_io_manager),
       advisory_script_uri_(p_advisory_script_uri),
       advisory_script_entrypoint_(p_advisory_script_entrypoint),
+      idle_notification_callback_(idle_notification_callback),
       window_data_(std::move(p_window_data)),
       root_isolate_(
           DartIsolate::CreateRootIsolate(vm_,
@@ -66,40 +66,43 @@ RuntimeController::RuntimeController(
                                          shared_snapshot_,
                                          task_runners_,
                                          std::make_unique<Window>(this),
-                                         resource_context_,
-                                         unref_queue_,
+                                         snapshot_delegate_,
+                                         io_manager_,
                                          p_advisory_script_uri,
                                          p_advisory_script_entrypoint)) {
-  root_isolate_->SetReturnCodeCallback([this](uint32_t code) {
+  std::shared_ptr<DartIsolate> root_isolate = root_isolate_.lock();
+  root_isolate->SetReturnCodeCallback([this](uint32_t code) {
     root_isolate_return_code_ = {true, code};
   });
-  if (auto window = GetWindowIfAvailable()) {
-    tonic::DartState::Scope scope(root_isolate_.get());
+  if (auto* window = GetWindowIfAvailable()) {
+    tonic::DartState::Scope scope(root_isolate);
     window->DidCreateIsolate();
     if (!FlushRuntimeStateToIsolate()) {
-      FXL_DLOG(ERROR) << "Could not setup intial isolate state.";
+      FML_DLOG(ERROR) << "Could not setup intial isolate state.";
     }
   } else {
-    FXL_DCHECK(false) << "RuntimeController created without window binding.";
+    FML_DCHECK(false) << "RuntimeController created without window binding.";
   }
-  FXL_DCHECK(Dart_CurrentIsolate() == nullptr);
+  FML_DCHECK(Dart_CurrentIsolate() == nullptr);
 }
 
 RuntimeController::~RuntimeController() {
-  FXL_DCHECK(Dart_CurrentIsolate() == nullptr);
-  if (root_isolate_) {
-    root_isolate_->SetReturnCodeCallback(nullptr);
-    auto result = root_isolate_->Shutdown();
+  FML_DCHECK(Dart_CurrentIsolate() == nullptr);
+  std::shared_ptr<DartIsolate> root_isolate = root_isolate_.lock();
+  if (root_isolate) {
+    root_isolate->SetReturnCodeCallback(nullptr);
+    auto result = root_isolate->Shutdown();
     if (!result) {
-      FXL_DLOG(ERROR) << "Could not shutdown the root isolate.";
+      FML_DLOG(ERROR) << "Could not shutdown the root isolate.";
     }
     root_isolate_ = {};
   }
 }
 
 bool RuntimeController::IsRootIsolateRunning() const {
-  if (root_isolate_) {
-    return root_isolate_->GetPhase() == DartIsolate::Phase::Running;
+  std::shared_ptr<DartIsolate> root_isolate = root_isolate_.lock();
+  if (root_isolate) {
+    return root_isolate->GetPhase() == DartIsolate::Phase::Running;
   }
   return false;
 }
@@ -111,39 +114,39 @@ std::unique_ptr<RuntimeController> RuntimeController::Clone() const {
       isolate_snapshot_,            //
       shared_snapshot_,             //
       task_runners_,                //
-      resource_context_,            //
-      unref_queue_,                 //
+      snapshot_delegate_,           //
+      io_manager_,                  //
       advisory_script_uri_,         //
       advisory_script_entrypoint_,  //
+      idle_notification_callback_,  //
       window_data_                  //
       ));
 }
 
 bool RuntimeController::FlushRuntimeStateToIsolate() {
   return SetViewportMetrics(window_data_.viewport_metrics) &&
-         SetLocale(window_data_.language_code, window_data_.country_code) &&
+         SetLocales(window_data_.locale_data) &&
          SetSemanticsEnabled(window_data_.semantics_enabled) &&
-         SetAssistiveTechnologyEnabled(
-             window_data_.assistive_technology_enabled);
+         SetAccessibilityFeatures(window_data_.accessibility_feature_flags_) &&
+         SetUserSettingsData(window_data_.user_settings_data);
 }
 
 bool RuntimeController::SetViewportMetrics(const ViewportMetrics& metrics) {
   window_data_.viewport_metrics = metrics;
 
-  if (auto window = GetWindowIfAvailable()) {
+  if (auto* window = GetWindowIfAvailable()) {
     window->UpdateWindowMetrics(metrics);
     return true;
   }
   return false;
 }
 
-bool RuntimeController::SetLocale(const std::string& language_code,
-                                  const std::string& country_code) {
-  window_data_.language_code = language_code;
-  window_data_.country_code = country_code;
+bool RuntimeController::SetLocales(
+    const std::vector<std::string>& locale_data) {
+  window_data_.locale_data = locale_data;
 
-  if (auto window = GetWindowIfAvailable()) {
-    window->UpdateLocale(window_data_.language_code, window_data_.country_code);
+  if (auto* window = GetWindowIfAvailable()) {
+    window->UpdateLocales(locale_data);
     return true;
   }
 
@@ -153,7 +156,7 @@ bool RuntimeController::SetLocale(const std::string& language_code,
 bool RuntimeController::SetUserSettingsData(const std::string& data) {
   window_data_.user_settings_data = data;
 
-  if (auto window = GetWindowIfAvailable()) {
+  if (auto* window = GetWindowIfAvailable()) {
     window->UpdateUserSettingsData(window_data_.user_settings_data);
     return true;
   }
@@ -164,7 +167,7 @@ bool RuntimeController::SetUserSettingsData(const std::string& data) {
 bool RuntimeController::SetSemanticsEnabled(bool enabled) {
   window_data_.semantics_enabled = enabled;
 
-  if (auto window = GetWindowIfAvailable()) {
+  if (auto* window = GetWindowIfAvailable()) {
     window->UpdateSemanticsEnabled(window_data_.semantics_enabled);
     return true;
   }
@@ -172,19 +175,19 @@ bool RuntimeController::SetSemanticsEnabled(bool enabled) {
   return false;
 }
 
-bool RuntimeController::SetAssistiveTechnologyEnabled(bool enabled) {
-  window_data_.assistive_technology_enabled = enabled;
-  if (auto window = GetWindowIfAvailable()) {
-    window->UpdateAssistiveTechnologyEnabled(
-        window_data_.assistive_technology_enabled);
+bool RuntimeController::SetAccessibilityFeatures(int32_t flags) {
+  window_data_.accessibility_feature_flags_ = flags;
+  if (auto* window = GetWindowIfAvailable()) {
+    window->UpdateAccessibilityFeatures(
+        window_data_.accessibility_feature_flags_);
     return true;
   }
 
   return false;
 }
 
-bool RuntimeController::BeginFrame(fxl::TimePoint frame_time) {
-  if (auto window = GetWindowIfAvailable()) {
+bool RuntimeController::BeginFrame(fml::TimePoint frame_time) {
+  if (auto* window = GetWindowIfAvailable()) {
     window->BeginFrame(frame_time);
     return true;
   }
@@ -192,18 +195,26 @@ bool RuntimeController::BeginFrame(fxl::TimePoint frame_time) {
 }
 
 bool RuntimeController::NotifyIdle(int64_t deadline) {
-  if (!root_isolate_) {
+  std::shared_ptr<DartIsolate> root_isolate = root_isolate_.lock();
+  if (!root_isolate) {
     return false;
   }
 
-  tonic::DartState::Scope scope(root_isolate_.get());
+  tonic::DartState::Scope scope(root_isolate);
+
   Dart_NotifyIdle(deadline);
+
+  // Idle notifications being in isolate scope are part of the contract.
+  if (idle_notification_callback_) {
+    TRACE_EVENT0("flutter", "EmbedderIdleNotification");
+    idle_notification_callback_(deadline);
+  }
   return true;
 }
 
 bool RuntimeController::DispatchPlatformMessage(
-    fxl::RefPtr<PlatformMessage> message) {
-  if (auto window = GetWindowIfAvailable()) {
+    fml::RefPtr<PlatformMessage> message) {
+  if (auto* window = GetWindowIfAvailable()) {
     TRACE_EVENT1("flutter", "RuntimeController::DispatchPlatformMessage",
                  "mode", "basic");
     window->DispatchPlatformMessage(std::move(message));
@@ -214,7 +225,7 @@ bool RuntimeController::DispatchPlatformMessage(
 
 bool RuntimeController::DispatchPointerDataPacket(
     const PointerDataPacket& packet) {
-  if (auto window = GetWindowIfAvailable()) {
+  if (auto* window = GetWindowIfAvailable()) {
     TRACE_EVENT1("flutter", "RuntimeController::DispatchPointerDataPacket",
                  "mode", "basic");
     window->DispatchPointerDataPacket(packet);
@@ -228,7 +239,7 @@ bool RuntimeController::DispatchSemanticsAction(int32_t id,
                                                 std::vector<uint8_t> args) {
   TRACE_EVENT1("flutter", "RuntimeController::DispatchSemanticsAction", "mode",
                "basic");
-  if (auto window = GetWindowIfAvailable()) {
+  if (auto* window = GetWindowIfAvailable()) {
     window->DispatchSemanticsAction(id, action, std::move(args));
     return true;
   }
@@ -236,7 +247,8 @@ bool RuntimeController::DispatchSemanticsAction(int32_t id,
 }
 
 Window* RuntimeController::GetWindowIfAvailable() {
-  return root_isolate_ ? root_isolate_->window() : nullptr;
+  std::shared_ptr<DartIsolate> root_isolate = root_isolate_.lock();
+  return root_isolate ? root_isolate->window() : nullptr;
 }
 
 std::string RuntimeController::DefaultRouteName() {
@@ -258,7 +270,7 @@ void RuntimeController::UpdateSemantics(SemanticsUpdate* update) {
 }
 
 void RuntimeController::HandlePlatformMessage(
-    fxl::RefPtr<PlatformMessage> message) {
+    fml::RefPtr<PlatformMessage> message) {
   client_.HandlePlatformMessage(std::move(message));
 }
 
@@ -266,32 +278,58 @@ FontCollection& RuntimeController::GetFontCollection() {
   return client_.GetFontCollection();
 }
 
+void RuntimeController::UpdateIsolateDescription(const std::string isolate_name,
+                                                 int64_t isolate_port) {
+  client_.UpdateIsolateDescription(isolate_name, isolate_port);
+}
+
 Dart_Port RuntimeController::GetMainPort() {
-  return root_isolate_ ? root_isolate_->main_port() : ILLEGAL_PORT;
+  std::shared_ptr<DartIsolate> root_isolate = root_isolate_.lock();
+  return root_isolate ? root_isolate->main_port() : ILLEGAL_PORT;
 }
 
 std::string RuntimeController::GetIsolateName() {
-  return root_isolate_ ? root_isolate_->debug_name() : "";
+  std::shared_ptr<DartIsolate> root_isolate = root_isolate_.lock();
+  return root_isolate ? root_isolate->debug_name() : "";
 }
 
 bool RuntimeController::HasLivePorts() {
-  if (!root_isolate_) {
+  std::shared_ptr<DartIsolate> root_isolate = root_isolate_.lock();
+  if (!root_isolate) {
     return false;
   }
-  tonic::DartState::Scope scope(root_isolate_.get());
+  tonic::DartState::Scope scope(root_isolate);
   return Dart_HasLivePorts();
 }
 
 tonic::DartErrorHandleType RuntimeController::GetLastError() {
-  return root_isolate_ ? root_isolate_->GetLastError() : tonic::kNoError;
+  std::shared_ptr<DartIsolate> root_isolate = root_isolate_.lock();
+  return root_isolate ? root_isolate->GetLastError() : tonic::kNoError;
 }
 
-fml::WeakPtr<DartIsolate> RuntimeController::GetRootIsolate() {
+std::weak_ptr<DartIsolate> RuntimeController::GetRootIsolate() {
   return root_isolate_;
 }
 
 std::pair<bool, uint32_t> RuntimeController::GetRootIsolateReturnCode() {
   return root_isolate_return_code_;
 }
+
+RuntimeController::Locale::Locale(std::string language_code_,
+                                  std::string country_code_,
+                                  std::string script_code_,
+                                  std::string variant_code_)
+    : language_code(language_code_),
+      country_code(country_code_),
+      script_code(script_code_),
+      variant_code(variant_code_) {}
+
+RuntimeController::Locale::~Locale() = default;
+
+RuntimeController::WindowData::WindowData() = default;
+
+RuntimeController::WindowData::WindowData(const WindowData& other) = default;
+
+RuntimeController::WindowData::~WindowData() = default;
 
 }  // namespace blink

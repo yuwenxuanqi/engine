@@ -1,14 +1,14 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef FLUTTER_LIB_UI_PAINTING_VERTICES_H_
 #define FLUTTER_LIB_UI_PAINTING_VERTICES_H_
 
-#include "lib/tonic/dart_wrappable.h"
-#include "lib/tonic/typed_data/float32_list.h"
-#include "lib/tonic/typed_data/int32_list.h"
+#include "flutter/lib/ui/dart_wrapper.h"
 #include "third_party/skia/include/core/SkVertices.h"
+#include "third_party/tonic/typed_data/float32_list.h"
+#include "third_party/tonic/typed_data/int32_list.h"
 
 namespace tonic {
 class DartLibraryNatives;
@@ -16,17 +16,16 @@ class DartLibraryNatives;
 
 namespace blink {
 
-class Vertices : public fxl::RefCountedThreadSafe<Vertices>,
-                 public tonic::DartWrappable {
+class Vertices : public RefCountedDartWrappable<Vertices> {
   DEFINE_WRAPPERTYPEINFO();
-  FRIEND_MAKE_REF_COUNTED(Vertices);
+  FML_FRIEND_MAKE_REF_COUNTED(Vertices);
 
  public:
   ~Vertices() override;
 
   static void RegisterNatives(tonic::DartLibraryNatives* natives);
 
-  static fxl::RefPtr<Vertices> Create();
+  static fml::RefPtr<Vertices> Create();
 
   void init(SkVertices::VertexMode vertex_mode,
             const tonic::Float32List& positions,

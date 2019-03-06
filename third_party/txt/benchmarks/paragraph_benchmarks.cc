@@ -17,9 +17,9 @@
 #include "third_party/benchmark/include/benchmark/benchmark_api.h"
 
 #include <minikin/Layout.h>
+#include "flutter/fml/command_line.h"
+#include "flutter/fml/logging.h"
 #include "flutter/third_party/txt/tests/txt_test_utils.h"
-#include "lib/fxl/command_line.h"
-#include "lib/fxl/logging.h"
 #include "minikin/LayoutUtils.h"
 #include "third_party/icu/source/common/unicode/unistr.h"
 #include "third_party/skia/include/core/SkBitmap.h"
@@ -426,15 +426,14 @@ BENCHMARK(BM_ParagraphMinikinAddStyleRun)
     ->Complexity(benchmark::oN);
 
 static void BM_ParagraphSkTextBlobAlloc(benchmark::State& state) {
-  SkPaint paint;
-  paint.setAntiAlias(true);
-  paint.setTextEncoding(SkPaint::kGlyphID_TextEncoding);
-  paint.setTextSize(14);
-  paint.setFakeBoldText(false);
+  SkFont font;
+  font.setEdging(SkFont::Edging::kAntiAlias);
+  font.setSize(14);
+  font.setEmbolden(false);
 
   while (state.KeepRunning()) {
     SkTextBlobBuilder builder;
-    builder.allocRunPos(paint, state.range(0));
+    builder.allocRunPos(font, state.range(0));
   }
   state.SetComplexityN(state.range(0));
 }

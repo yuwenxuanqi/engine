@@ -1,41 +1,48 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef SHELL_GPU_GPU_SURFACE_GL_H_
 #define SHELL_GPU_GPU_SURFACE_GL_H_
 
+#include <functional>
+#include <memory>
+
+#include "flutter/flow/embedded_views.h"
+#include "flutter/fml/macros.h"
+#include "flutter/fml/memory/weak_ptr.h"
 #include "flutter/shell/common/surface.h"
-#include "lib/fxl/macros.h"
-#include "lib/fxl/memory/weak_ptr.h"
+#include "flutter/shell/gpu/gpu_surface_gl_delegate.h"
 #include "third_party/skia/include/gpu/GrContext.h"
 
 namespace shell {
-
-class GPUSurfaceGLDelegate {
- public:
-  virtual bool GLContextMakeCurrent() = 0;
-
-  virtual bool GLContextClearCurrent() = 0;
-
-  virtual bool GLContextPresent() = 0;
-
-  virtual intptr_t GLContextFBO() const = 0;
-
-  virtual bool UseOffscreenSurface() const { return false; }
-};
 
 class GPUSurfaceGL : public Surface {
  public:
   GPUSurfaceGL(GPUSurfaceGLDelegate* delegate);
 
+  // Creates a new GL surface reusing an existing GrContext.
+  GPUSurfaceGL(sk_sp<GrContext> gr_context, GPUSurfaceGLDelegate* delegate);
+
   ~GPUSurfaceGL() override;
 
+  // |shell::Surface|
   bool IsValid() override;
 
+  // |shell::Surface|
   std::unique_ptr<SurfaceFrame> AcquireFrame(const SkISize& size) override;
 
+  // |shell::Surface|
+  SkMatrix GetRootTransformation() const override;
+
+  // |shell::Surface|
   GrContext* GetContext() override;
+
+  // |shell::Surface|
+  flow::ExternalViewEmbedder* GetExternalViewEmbedder() override;
+
+  // |shell::Surface|
+  bool MakeRenderContextCurrent() override;
 
  private:
   GPUSurfaceGLDelegate* delegate_;
@@ -43,15 +50,18 @@ class GPUSurfaceGL : public Surface {
   sk_sp<SkSurface> onscreen_surface_;
   sk_sp<SkSurface> offscreen_surface_;
   bool valid_ = false;
-  fxl::WeakPtrFactory<GPUSurfaceGL> weak_factory_;
+  fml::WeakPtrFactory<GPUSurfaceGL> weak_factory_;
+  bool context_owner_;
 
   bool CreateOrUpdateSurfaces(const SkISize& size);
 
-  sk_sp<SkSurface> AcquireRenderSurface(const SkISize& size);
+  sk_sp<SkSurface> AcquireRenderSurface(
+      const SkISize& untransformed_size,
+      const SkMatrix& root_surface_transformation);
 
   bool PresentSurface(SkCanvas* canvas);
 
-  FXL_DISALLOW_COPY_AND_ASSIGN(GPUSurfaceGL);
+  FML_DISALLOW_COPY_AND_ASSIGN(GPUSurfaceGL);
 };
 
 }  // namespace shell

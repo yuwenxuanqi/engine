@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,45 +9,56 @@
 #include <memory>
 #include <stack>
 
-#include "flutter/flow/layers/layer_builder.h"
 #include "flutter/lib/ui/compositing/scene.h"
 #include "flutter/lib/ui/compositing/scene_host.h"
+#include "flutter/lib/ui/dart_wrapper.h"
+#include "flutter/lib/ui/painting/engine_layer.h"
 #include "flutter/lib/ui/painting/image_filter.h"
 #include "flutter/lib/ui/painting/path.h"
 #include "flutter/lib/ui/painting/picture.h"
 #include "flutter/lib/ui/painting/rrect.h"
 #include "flutter/lib/ui/painting/shader.h"
-#include "lib/tonic/dart_wrappable.h"
-#include "lib/tonic/typed_data/float64_list.h"
+#include "third_party/tonic/typed_data/float64_list.h"
 
 namespace blink {
 
-class SceneBuilder : public fxl::RefCountedThreadSafe<SceneBuilder>,
-                     public tonic::DartWrappable {
+class SceneBuilder : public RefCountedDartWrappable<SceneBuilder> {
   DEFINE_WRAPPERTYPEINFO();
-  FRIEND_MAKE_REF_COUNTED(SceneBuilder);
+  FML_FRIEND_MAKE_REF_COUNTED(SceneBuilder);
 
  public:
-  static fxl::RefPtr<SceneBuilder> create() {
-    return fxl::MakeRefCounted<SceneBuilder>();
+  static fml::RefPtr<SceneBuilder> create() {
+    return fml::MakeRefCounted<SceneBuilder>();
   }
 
   ~SceneBuilder() override;
 
-  void pushTransform(const tonic::Float64List& matrix4);
-  void pushClipRect(double left, double right, double top, double bottom, int clipMode);
-  void pushClipRRect(const RRect& rrect, int clipMode);
-  void pushClipPath(const CanvasPath* path, int clipMode);
-  void pushOpacity(int alpha);
-  void pushColorFilter(int color, int blendMode);
-  void pushBackdropFilter(ImageFilter* filter);
-  void pushShaderMask(Shader* shader,
-                      double maskRectLeft,
-                      double maskRectRight,
-                      double maskRectTop,
-                      double maskRectBottom,
-                      int blendMode);
-  void pushPhysicalShape(const CanvasPath* path, double elevation, int color, int shadowColor, int clipMode);
+  fml::RefPtr<EngineLayer> pushTransform(tonic::Float64List& matrix4);
+  fml::RefPtr<EngineLayer> pushOffset(double dx, double dy);
+  fml::RefPtr<EngineLayer> pushClipRect(double left,
+                                        double right,
+                                        double top,
+                                        double bottom,
+                                        int clipBehavior);
+  fml::RefPtr<EngineLayer> pushClipRRect(const RRect& rrect, int clipBehavior);
+  fml::RefPtr<EngineLayer> pushClipPath(const CanvasPath* path,
+                                        int clipBehavior);
+  fml::RefPtr<EngineLayer> pushOpacity(int alpha, double dx = 0, double dy = 0);
+  fml::RefPtr<EngineLayer> pushColorFilter(int color, int blendMode);
+  fml::RefPtr<EngineLayer> pushBackdropFilter(ImageFilter* filter);
+  fml::RefPtr<EngineLayer> pushShaderMask(Shader* shader,
+                                          double maskRectLeft,
+                                          double maskRectRight,
+                                          double maskRectTop,
+                                          double maskRectBottom,
+                                          int blendMode);
+  fml::RefPtr<EngineLayer> pushPhysicalShape(const CanvasPath* path,
+                                             double elevation,
+                                             int color,
+                                             int shadowColor,
+                                             int clipBehavior);
+
+  void addRetained(fml::RefPtr<EngineLayer> retainedLayer);
 
   void pop();
 
@@ -63,7 +74,14 @@ class SceneBuilder : public fxl::RefCountedThreadSafe<SceneBuilder>,
                   double dy,
                   double width,
                   double height,
-                  int64_t textureId);
+                  int64_t textureId,
+                  bool freeze);
+
+  void addPlatformView(double dx,
+                       double dy,
+                       double width,
+                       double height,
+                       int64_t viewId);
 
   void addChildScene(double dx,
                      double dy,
@@ -77,14 +95,23 @@ class SceneBuilder : public fxl::RefCountedThreadSafe<SceneBuilder>,
   void setCheckerboardRasterCacheImages(bool checkerboard);
   void setCheckerboardOffscreenLayers(bool checkerboard);
 
-  fxl::RefPtr<Scene> build();
+  fml::RefPtr<Scene> build();
 
   static void RegisterNatives(tonic::DartLibraryNatives* natives);
 
  private:
   SceneBuilder();
 
-  std::unique_ptr<flow::LayerBuilder> layer_builder_;
+  std::shared_ptr<flow::ContainerLayer> root_layer_;
+  flow::ContainerLayer* current_layer_ = nullptr;
+
+  int rasterizer_tracing_threshold_ = 0;
+  bool checkerboard_raster_cache_images_ = false;
+  bool checkerboard_offscreen_layers_ = false;
+
+  void PushLayer(std::shared_ptr<flow::ContainerLayer> layer);
+
+  FML_DISALLOW_COPY_AND_ASSIGN(SceneBuilder);
 };
 
 }  // namespace blink

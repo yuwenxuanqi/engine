@@ -1,12 +1,12 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef FLUTTER_LIB_UI_PAINTING_MATRIX_H_
 #define FLUTTER_LIB_UI_PAINTING_MATRIX_H_
 
-#include "lib/tonic/typed_data/float64_list.h"
 #include "third_party/skia/include/core/SkMatrix.h"
+#include "third_party/tonic/typed_data/float64_list.h"
 
 namespace blink {
 

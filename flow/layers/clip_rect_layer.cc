@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,30 +6,37 @@
 
 namespace flow {
 
-ClipRectLayer::ClipRectLayer(ClipMode clip_mode) : clip_mode_(clip_mode) {}
+ClipRectLayer::ClipRectLayer(Clip clip_behavior)
+    : clip_behavior_(clip_behavior) {
+  FML_DCHECK(clip_behavior != Clip::none);
+}
 
 ClipRectLayer::~ClipRectLayer() = default;
 
 void ClipRectLayer::Preroll(PrerollContext* context, const SkMatrix& matrix) {
-  SkRect child_paint_bounds = SkRect::MakeEmpty();
-  PrerollChildren(context, matrix, &child_paint_bounds);
+  SkRect previous_cull_rect = context->cull_rect;
+  if (context->cull_rect.intersect(clip_rect_)) {
+    SkRect child_paint_bounds = SkRect::MakeEmpty();
+    PrerollChildren(context, matrix, &child_paint_bounds);
 
-  if (child_paint_bounds.intersect(clip_rect_)) {
-    set_paint_bounds(child_paint_bounds);
+    if (child_paint_bounds.intersect(clip_rect_)) {
+      set_paint_bounds(child_paint_bounds);
+    }
   }
+  context->cull_rect = previous_cull_rect;
 }
 
 #if defined(OS_FUCHSIA)
 
 void ClipRectLayer::UpdateScene(SceneUpdateContext& context) {
-  FXL_DCHECK(needs_system_composite());
+  FML_DCHECK(needs_system_composite());
 
   scenic::Rectangle shape(context.session(),   // session
-                              clip_rect_.width(),  //  width
-                              clip_rect_.height()  //  height
+                          clip_rect_.width(),  //  width
+                          clip_rect_.height()  //  height
   );
 
-  // TODO(liyuqian): respect clip_mode_
+  // TODO(liyuqian): respect clip_behavior_
   SceneUpdateContext::Clip clip(context, shape, clip_rect_);
   UpdateSceneChildren(context);
 }
@@ -38,16 +45,17 @@ void ClipRectLayer::UpdateScene(SceneUpdateContext& context) {
 
 void ClipRectLayer::Paint(PaintContext& context) const {
   TRACE_EVENT0("flutter", "ClipRectLayer::Paint");
-  FXL_DCHECK(needs_painting());
+  FML_DCHECK(needs_painting());
 
-  SkAutoCanvasRestore save(&context.canvas, clip_mode_ != ClipMode::hardEdge);
-  context.canvas.clipRect(paint_bounds());
-  if (clip_mode_ == ClipMode::antiAliasWithSaveLayer) {
-    context.canvas.saveLayer(paint_bounds(), nullptr);
+  SkAutoCanvasRestore save(context.internal_nodes_canvas, true);
+  context.internal_nodes_canvas->clipRect(paint_bounds(),
+                                          clip_behavior_ != Clip::hardEdge);
+  if (clip_behavior_ == Clip::antiAliasWithSaveLayer) {
+    context.internal_nodes_canvas->saveLayer(paint_bounds(), nullptr);
   }
   PaintChildren(context);
-  if (clip_mode_ == ClipMode::antiAliasWithSaveLayer) {
-    context.canvas.restore();
+  if (clip_behavior_ == Clip::antiAliasWithSaveLayer) {
+    context.internal_nodes_canvas->restore();
   }
 }
 

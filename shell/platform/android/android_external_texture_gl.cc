@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include <GLES/glext.h>
 
 #include "flutter/shell/platform/android/platform_view_android_jni.h"
-#include "third_party/skia/include/gpu/GrTexture.h"
+#include "third_party/skia/include/gpu/GrBackendSurface.h"
 
 namespace shell {
 
@@ -16,7 +16,11 @@ AndroidExternalTextureGL::AndroidExternalTextureGL(
     const fml::jni::JavaObjectWeakGlobalRef& surfaceTexture)
     : Texture(id), surface_texture_(surfaceTexture), transform(SkMatrix::I()) {}
 
-AndroidExternalTextureGL::~AndroidExternalTextureGL() = default;
+AndroidExternalTextureGL::~AndroidExternalTextureGL() {
+  if (state_ == AttachmentState::attached) {
+    glDeleteTextures(1, &texture_name_);
+  }
+}
 
 void AndroidExternalTextureGL::OnGrContextCreated() {
   state_ = AttachmentState::uninitialized;
@@ -26,7 +30,9 @@ void AndroidExternalTextureGL::MarkNewFrameAvailable() {
   new_frame_ready_ = true;
 }
 
-void AndroidExternalTextureGL::Paint(SkCanvas& canvas, const SkRect& bounds) {
+void AndroidExternalTextureGL::Paint(SkCanvas& canvas,
+                                     const SkRect& bounds,
+                                     bool freeze) {
   if (state_ == AttachmentState::detached) {
     return;
   }
@@ -35,7 +41,7 @@ void AndroidExternalTextureGL::Paint(SkCanvas& canvas, const SkRect& bounds) {
     Attach(static_cast<jint>(texture_name_));
     state_ = AttachmentState::attached;
   }
-  if (new_frame_ready_) {
+  if (!freeze && new_frame_ready_) {
     Update();
     new_frame_ready_ = false;
   }

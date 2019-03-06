@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 
 #include <vector>
 
-#include "lib/fxl/logging.h"
+#include "flutter/fml/logging.h"
 #include "third_party/dart/runtime/include/dart_tools_api.h"
 #include "third_party/skia/include/utils/SkEventTracer.h"
 #include "third_party/skia/include/utils/SkTraceEventPhase.h"
@@ -77,7 +77,7 @@ class FlutterEventTracer : public SkEventTracer {
 
  private:
   uint8_t enabled_;
-  FXL_DISALLOW_COPY_AND_ASSIGN(FlutterEventTracer);
+  FML_DISALLOW_COPY_AND_ASSIGN(FlutterEventTracer);
 };
 
 bool enableSkiaTracingCallback(const char* method,

@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,10 @@
 #include <sstream>
 #include <string>
 
+#include "flutter/common/version/version.h"
+#include "flutter/fml/native_library.h"
 #include "flutter/fml/paths.h"
-#include "lib/fxl/strings/string_view.h"
+#include "flutter/fml/string_view.h"
 
 // Include once for the default enum definition.
 #include "flutter/shell/common/switches.h"
@@ -19,7 +21,7 @@
 
 struct SwitchDesc {
   shell::Switch sw;
-  const fxl::StringView flag;
+  const fml::StringView flag;
   const char* help;
 };
 
@@ -41,6 +43,15 @@ namespace shell {
 
 void PrintUsage(const std::string& executable_name) {
   std::cerr << std::endl << "  " << executable_name << std::endl << std::endl;
+
+  std::cerr << "Versions: " << std::endl << std::endl;
+
+  std::cerr << "Flutter Engine Version: " << blink::GetFlutterEngineVersion()
+            << std::endl;
+  std::cerr << "Skia Version: " << blink::GetSkiaVersion() << std::endl;
+
+  std::cerr << "Dart Version: " << blink::GetDartVersion() << std::endl
+            << std::endl;
 
   std::cerr << "Available Flags:" << std::endl;
 
@@ -83,17 +94,17 @@ void PrintUsage(const std::string& executable_name) {
   std::cerr << std::string(column_width, '-') << std::endl;
 }
 
-const fxl::StringView FlagForSwitch(Switch swtch) {
+const fml::StringView FlagForSwitch(Switch swtch) {
   for (uint32_t i = 0; i < static_cast<uint32_t>(Switch::Sentinel); i++) {
     if (gSwitchDescs[i].sw == swtch) {
       return gSwitchDescs[i].flag;
     }
   }
-  return fxl::StringView();
+  return fml::StringView();
 }
 
 template <typename T>
-static bool GetSwitchValue(const fxl::CommandLine& command_line,
+static bool GetSwitchValue(const fml::CommandLine& command_line,
                            shell::Switch sw,
                            T* result) {
   std::string switch_string;
@@ -112,7 +123,18 @@ static bool GetSwitchValue(const fxl::CommandLine& command_line,
   return false;
 }
 
-blink::Settings SettingsFromCommandLine(const fxl::CommandLine& command_line) {
+std::unique_ptr<fml::Mapping> GetSymbolMapping(std::string symbol_prefix) {
+  fml::RefPtr<fml::NativeLibrary> proc_library =
+      fml::NativeLibrary::CreateForCurrentProcess();
+  const uint8_t* mapping =
+      proc_library->ResolveSymbol((symbol_prefix + "_start").c_str());
+  const intptr_t size = reinterpret_cast<intptr_t>(
+      proc_library->ResolveSymbol((symbol_prefix + "_size").c_str()));
+  FML_CHECK(mapping && size) << "Unable to resolve symbols: " << symbol_prefix;
+  return std::make_unique<fml::NonOwnedMapping>(mapping, size);
+}
+
+blink::Settings SettingsFromCommandLine(const fml::CommandLine& command_line) {
   blink::Settings settings = {};
 
   // Enable Observatory
@@ -123,15 +145,15 @@ blink::Settings SettingsFromCommandLine(const fxl::CommandLine& command_line) {
   if (command_line.HasOption(FlagForSwitch(Switch::DeviceObservatoryPort))) {
     if (!GetSwitchValue(command_line, Switch::DeviceObservatoryPort,
                         &settings.observatory_port)) {
-      FXL_LOG(INFO)
+      FML_LOG(INFO)
           << "Observatory port specified was malformed. Will default to "
           << settings.observatory_port;
     }
   }
 
   // Checked mode overrides.
-  settings.dart_non_checked_mode =
-      command_line.HasOption(FlagForSwitch(Switch::DartNonCheckedMode));
+  settings.disable_dart_asserts =
+      command_line.HasOption(FlagForSwitch(Switch::DisableDartAsserts));
 
   settings.ipv6 = command_line.HasOption(FlagForSwitch(Switch::IPv6));
 
@@ -160,15 +182,6 @@ blink::Settings SettingsFromCommandLine(const fxl::CommandLine& command_line) {
 
   command_line.GetOptionValue(FlagForSwitch(Switch::FlutterAssetsDir),
                               &settings.assets_path);
-
-  command_line.GetOptionValue(FlagForSwitch(Switch::Snapshot),
-                              &settings.script_snapshot_path);
-
-  command_line.GetOptionValue(FlagForSwitch(Switch::MainDartFile),
-                              &settings.main_dart_file_path);
-
-  command_line.GetOptionValue(FlagForSwitch(Switch::Packages),
-                              &settings.packages_file_path);
 
   std::string aot_shared_library_path;
   command_line.GetOptionValue(FlagForSwitch(Switch::AotSharedLibraryPath),
@@ -211,8 +224,18 @@ blink::Settings SettingsFromCommandLine(const fxl::CommandLine& command_line) {
   command_line.GetOptionValue(FlagForSwitch(Switch::CacheDirPath),
                               &settings.temp_directory_path);
 
-  command_line.GetOptionValue(FlagForSwitch(Switch::ICUDataFilePath),
-                              &settings.icu_data_path);
+  if (settings.icu_initialization_required) {
+    command_line.GetOptionValue(FlagForSwitch(Switch::ICUDataFilePath),
+                                &settings.icu_data_path);
+    if (command_line.HasOption(FlagForSwitch(Switch::ICUSymbolPrefix))) {
+      std::string icu_symbol_prefix;
+      command_line.GetOptionValue(FlagForSwitch(Switch::ICUSymbolPrefix),
+                                  &icu_symbol_prefix);
+      settings.icu_mapper = [icu_symbol_prefix] {
+        return GetSymbolMapping(icu_symbol_prefix);
+      };
+    }
+  }
 
   settings.use_test_fonts =
       command_line.HasOption(FlagForSwitch(Switch::UseTestFonts));
@@ -231,6 +254,8 @@ blink::Settings SettingsFromCommandLine(const fxl::CommandLine& command_line) {
     FLUTTER_RUNTIME_MODE != FLUTTER_RUNTIME_MODE_DYNAMIC_RELEASE
   settings.trace_skia =
       command_line.HasOption(FlagForSwitch(Switch::TraceSkia));
+  settings.trace_systrace =
+      command_line.HasOption(FlagForSwitch(Switch::TraceSystrace));
 #endif
 
   return settings;

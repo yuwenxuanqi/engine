@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -203,41 +203,6 @@ using namespace shell;
 }
 @end
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-
-@implementation FlutterStandardBigInteger
-+ (instancetype)bigIntegerWithHex:(NSString*)hex {
-  return [[[FlutterStandardBigInteger alloc] initWithHex:hex] autorelease];
-}
-
-- (instancetype)initWithHex:(NSString*)hex {
-  NSAssert(hex, @"Hex cannot be nil");
-  self = [super init];
-  NSAssert(self, @"Super init cannot be nil");
-  _hex = [hex retain];
-  return self;
-}
-
-- (void)dealloc {
-  [_hex release];
-  [super dealloc];
-}
-
-- (BOOL)isEqual:(id)object {
-  if (self == object)
-    return YES;
-  if (![object isKindOfClass:[FlutterStandardBigInteger class]])
-    return NO;
-  FlutterStandardBigInteger* other = (FlutterStandardBigInteger*)object;
-  return [self.hex isEqual:other.hex];
-}
-
-- (NSUInteger)hash {
-  return [self.hex hash];
-}
-@end
-
 #pragma mark - Writer and reader of standard codec
 
 @implementation FlutterStandardWriter {
@@ -300,52 +265,51 @@ using namespace shell;
   if (value == nil || value == [NSNull null]) {
     [self writeByte:FlutterStandardFieldNil];
   } else if ([value isKindOfClass:[NSNumber class]]) {
-    NSNumber* number = value;
-    const char* type = [number objCType];
-    if ([self isBool:number type:type]) {
-      BOOL b = number.boolValue;
+    CFNumberRef number = (CFNumberRef)value;
+    BOOL success = NO;
+    if (CFGetTypeID(number) == CFBooleanGetTypeID()) {
+      BOOL b = CFBooleanGetValue((CFBooleanRef)number);
       [self writeByte:(b ? FlutterStandardFieldTrue : FlutterStandardFieldFalse)];
-    } else if (strcmp(type, @encode(signed int)) == 0 || strcmp(type, @encode(signed short)) == 0 ||
-               strcmp(type, @encode(unsigned short)) == 0 ||
-               strcmp(type, @encode(signed char)) == 0 ||
-               strcmp(type, @encode(unsigned char)) == 0) {
-      SInt32 n = number.intValue;
-      [self writeByte:FlutterStandardFieldInt32];
-      [self writeBytes:(UInt8*)&n length:4];
-    } else if (strcmp(type, @encode(signed long)) == 0 ||
-               strcmp(type, @encode(unsigned int)) == 0) {
-      SInt64 n = number.longValue;
-      [self writeByte:FlutterStandardFieldInt64];
-      [self writeBytes:(UInt8*)&n length:8];
-    } else if (strcmp(type, @encode(double)) == 0 || strcmp(type, @encode(float)) == 0) {
-      Float64 f = number.doubleValue;
-      [self writeByte:FlutterStandardFieldFloat64];
-      [self writeAlignment:8];
-      [self writeBytes:(UInt8*)&f length:8];
-    } else if (strcmp(type, @encode(unsigned long)) == 0 ||
-               strcmp(type, @encode(signed long long)) == 0 ||
-               strcmp(type, @encode(unsigned long long)) == 0) {
-      NSString* hex = [NSString stringWithFormat:@"%llx", number.unsignedLongLongValue];
-      [self writeByte:FlutterStandardFieldIntHex];
-      [self writeUTF8:hex];
-    } else {
-      NSLog(@"Unsupported value: %@ of type %s", value, type);
+      success = YES;
+    } else if (CFNumberIsFloatType(number)) {
+      Float64 f;
+      success = CFNumberGetValue(number, kCFNumberFloat64Type, &f);
+      if (success) {
+        [self writeByte:FlutterStandardFieldFloat64];
+        [self writeAlignment:8];
+        [self writeBytes:(UInt8*)&f length:8];
+      }
+    } else if (CFNumberGetByteSize(number) <= 4) {
+      SInt32 n;
+      success = CFNumberGetValue(number, kCFNumberSInt32Type, &n);
+      if (success) {
+        [self writeByte:FlutterStandardFieldInt32];
+        [self writeBytes:(UInt8*)&n length:4];
+      }
+    } else if (CFNumberGetByteSize(number) <= 8) {
+      SInt64 n;
+      success = CFNumberGetValue(number, kCFNumberSInt64Type, &n);
+      if (success) {
+        [self writeByte:FlutterStandardFieldInt64];
+        [self writeBytes:(UInt8*)&n length:8];
+      }
+    }
+    if (!success) {
+      NSLog(@"Unsupported value: %@ of number type %ld", value, CFNumberGetType(number));
       NSAssert(NO, @"Unsupported value for standard codec");
     }
   } else if ([value isKindOfClass:[NSString class]]) {
     NSString* string = value;
     [self writeByte:FlutterStandardFieldString];
     [self writeUTF8:string];
-  } else if ([value isKindOfClass:[FlutterStandardBigInteger class]]) {
-    FlutterStandardBigInteger* bigInt = value;
-    [self writeByte:FlutterStandardFieldIntHex];
-    [self writeUTF8:bigInt.hex];
   } else if ([value isKindOfClass:[FlutterStandardTypedData class]]) {
     FlutterStandardTypedData* typedData = value;
     [self writeByte:FlutterStandardFieldForDataType(typedData.type)];
     [self writeSize:typedData.elementCount];
     [self writeAlignment:typedData.elementSize];
     [self writeData:typedData.data];
+  } else if ([value isKindOfClass:[NSData class]]) {
+    [self writeValue:[FlutterStandardTypedData typedDataWithBytes:value]];
   } else if ([value isKindOfClass:[NSArray class]]) {
     NSArray* array = value;
     [self writeByte:FlutterStandardFieldList];
@@ -365,11 +329,6 @@ using namespace shell;
     NSLog(@"Unsupported value: %@ of type %@", value, [value class]);
     NSAssert(NO, @"Unsupported value for standard codec");
   }
-}
-
-- (BOOL)isBool:(NSNumber*)number type:(const char*)type {
-  return strcmp(type, @encode(signed char)) == 0 &&
-         [NSStringFromClass([number class]) isEqual:@"__NSCFBoolean"];
 }
 @end
 
@@ -465,12 +424,12 @@ using namespace shell;
     case FlutterStandardFieldInt32: {
       SInt32 value;
       [self readBytes:&value length:4];
-      return [NSNumber numberWithInt:value];
+      return @(value);
     }
     case FlutterStandardFieldInt64: {
       SInt64 value;
       [self readBytes:&value length:8];
-      return [NSNumber numberWithLong:value];
+      return @(value);
     }
     case FlutterStandardFieldFloat64: {
       Float64 value;
@@ -479,7 +438,6 @@ using namespace shell;
       return [NSNumber numberWithDouble:value];
     }
     case FlutterStandardFieldIntHex:
-      return [FlutterStandardBigInteger bigIntegerWithHex:[self readUTF8]];
     case FlutterStandardFieldString:
       return [self readUTF8];
     case FlutterStandardFieldUInt8Data:
@@ -522,4 +480,3 @@ using namespace shell;
   return [[[FlutterStandardReader alloc] initWithData:data] autorelease];
 }
 @end
-#pragma clang diagnostic pop

@@ -1,4 +1,4 @@
-// Copyright 2017 The Flutter Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,12 @@
 
 #include <memory>
 
+#include "flutter/fml/macros.h"
 #include "flutter/shell/common/shell.h"
 #include "flutter/shell/common/thread_host.h"
 #include "flutter/shell/platform/embedder/embedder.h"
-#include "lib/fxl/macros.h"
+#include "flutter/shell/platform/embedder/embedder_engine.h"
+#include "flutter/shell/platform/embedder/embedder_external_texture_gl.h"
 
 namespace shell {
 
@@ -18,10 +20,13 @@ namespace shell {
 // instance of the Flutter engine.
 class EmbedderEngine {
  public:
-  EmbedderEngine(ThreadHost thread_host, blink::TaskRunners task_runners,
+  EmbedderEngine(ThreadHost thread_host,
+                 blink::TaskRunners task_runners,
                  blink::Settings settings,
                  Shell::CreateCallback<PlatformView> on_create_platform_view,
-                 Shell::CreateCallback<Rasterizer> on_create_rasterizer);
+                 Shell::CreateCallback<Rasterizer> on_create_rasterizer,
+                 EmbedderExternalTextureGL::ExternalTextureCallback
+                     external_texture_callback);
 
   ~EmbedderEngine();
 
@@ -38,14 +43,35 @@ class EmbedderEngine {
   bool DispatchPointerDataPacket(
       std::unique_ptr<blink::PointerDataPacket> packet);
 
-  bool SendPlatformMessage(fxl::RefPtr<blink::PlatformMessage> message);
+  bool SendPlatformMessage(fml::RefPtr<blink::PlatformMessage> message);
+
+  bool RegisterTexture(int64_t texture);
+
+  bool UnregisterTexture(int64_t texture);
+
+  bool MarkTextureFrameAvailable(int64_t texture);
+
+  bool SetSemanticsEnabled(bool enabled);
+
+  bool SetAccessibilityFeatures(int32_t flags);
+
+  bool DispatchSemanticsAction(int id,
+                               blink::SemanticsAction action,
+                               std::vector<uint8_t> args);
+
+  bool OnVsyncEvent(intptr_t baton,
+                    fml::TimePoint frame_start_time,
+                    fml::TimePoint frame_target_time);
 
  private:
   const ThreadHost thread_host_;
   std::unique_ptr<Shell> shell_;
+  const EmbedderExternalTextureGL::ExternalTextureCallback
+      external_texture_callback_;
   bool is_valid_ = false;
+  uint64_t next_pointer_flow_id_;
 
-  FXL_DISALLOW_COPY_AND_ASSIGN(EmbedderEngine);
+  FML_DISALLOW_COPY_AND_ASSIGN(EmbedderEngine);
 };
 
 }  // namespace shell

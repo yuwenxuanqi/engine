@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,25 +6,33 @@
 
 namespace flow {
 
-ClipRRectLayer::ClipRRectLayer(ClipMode clip_mode) : clip_mode_(clip_mode) {}
+ClipRRectLayer::ClipRRectLayer(Clip clip_behavior)
+    : clip_behavior_(clip_behavior) {
+  FML_DCHECK(clip_behavior != Clip::none);
+}
 
 ClipRRectLayer::~ClipRRectLayer() = default;
 
 void ClipRRectLayer::Preroll(PrerollContext* context, const SkMatrix& matrix) {
-  SkRect child_paint_bounds = SkRect::MakeEmpty();
-  PrerollChildren(context, matrix, &child_paint_bounds);
+  SkRect previous_cull_rect = context->cull_rect;
+  SkRect clip_rrect_bounds = clip_rrect_.getBounds();
+  if (context->cull_rect.intersect(clip_rrect_bounds)) {
+    SkRect child_paint_bounds = SkRect::MakeEmpty();
+    PrerollChildren(context, matrix, &child_paint_bounds);
 
-  if (child_paint_bounds.intersect(clip_rrect_.getBounds())) {
-    set_paint_bounds(child_paint_bounds);
+    if (child_paint_bounds.intersect(clip_rrect_bounds)) {
+      set_paint_bounds(child_paint_bounds);
+    }
   }
+  context->cull_rect = previous_cull_rect;
 }
 
 #if defined(OS_FUCHSIA)
 
 void ClipRRectLayer::UpdateScene(SceneUpdateContext& context) {
-  FXL_DCHECK(needs_system_composite());
+  FML_DCHECK(needs_system_composite());
 
-  // TODO(MZ-137): Need to be able to express the radii as vectors.
+  // TODO(SCN-137): Need to be able to express the radii as vectors.
   scenic::RoundedRectangle shape(
       context.session(),                                   // session
       clip_rrect_.width(),                                 //  width
@@ -36,7 +44,7 @@ void ClipRRectLayer::UpdateScene(SceneUpdateContext& context) {
       clip_rrect_.radii(SkRRect::kLowerLeft_Corner).x()  //  bottom_left_radius
   );
 
-  // TODO(liyuqian): respect clip_mode_
+  // TODO(liyuqian): respect clip_behavior_
   SceneUpdateContext::Clip clip(context, shape, clip_rrect_.getBounds());
   UpdateSceneChildren(context);
 }
@@ -45,16 +53,17 @@ void ClipRRectLayer::UpdateScene(SceneUpdateContext& context) {
 
 void ClipRRectLayer::Paint(PaintContext& context) const {
   TRACE_EVENT0("flutter", "ClipRRectLayer::Paint");
-  FXL_DCHECK(needs_painting());
+  FML_DCHECK(needs_painting());
 
-  SkAutoCanvasRestore save(&context.canvas, true);
-  context.canvas.clipRRect(clip_rrect_, clip_mode_ != ClipMode::hardEdge);
-  if (clip_mode_ == ClipMode::antiAliasWithSaveLayer) {
-    context.canvas.saveLayer(paint_bounds(), nullptr);
+  SkAutoCanvasRestore save(context.internal_nodes_canvas, true);
+  context.internal_nodes_canvas->clipRRect(clip_rrect_,
+                                           clip_behavior_ != Clip::hardEdge);
+  if (clip_behavior_ == Clip::antiAliasWithSaveLayer) {
+    context.internal_nodes_canvas->saveLayer(paint_bounds(), nullptr);
   }
   PaintChildren(context);
-  if (clip_mode_ == ClipMode::antiAliasWithSaveLayer) {
-    context.canvas.restore();
+  if (clip_behavior_ == Clip::antiAliasWithSaveLayer) {
+    context.internal_nodes_canvas->restore();
   }
 }
 

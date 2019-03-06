@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,8 @@
 
 #include <memory>
 
-#include "lib/fxl/compiler_specific.h"
-#include "lib/fxl/macros.h"
-#include "lib/fxl/time/time_delta.h"
+#include "flutter/fml/compiler_specific.h"
+#include "flutter/fml/macros.h"
 
 namespace flutter {
 
@@ -23,7 +22,7 @@ class Semaphore {
 
   bool IsValid() const;
 
-  FXL_WARN_UNUSED_RESULT
+  FML_WARN_UNUSED_RESULT
   bool TryWait();
 
   void Signal();
@@ -31,7 +30,7 @@ class Semaphore {
  private:
   std::unique_ptr<PlatformSemaphore> _impl;
 
-  FXL_DISALLOW_COPY_AND_ASSIGN(Semaphore);
+  FML_DISALLOW_COPY_AND_ASSIGN(Semaphore);
 };
 
 }  // namespace flutter

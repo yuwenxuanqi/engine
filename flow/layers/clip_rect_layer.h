@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@ namespace flow {
 
 class ClipRectLayer : public ContainerLayer {
  public:
-  ClipRectLayer(ClipMode clip_mode);
+  ClipRectLayer(Clip clip_behavior);
   ~ClipRectLayer() override;
 
   void set_clip_rect(const SkRect& clip_rect) { clip_rect_ = clip_rect; }
@@ -25,9 +25,9 @@ class ClipRectLayer : public ContainerLayer {
 
  private:
   SkRect clip_rect_;
-  ClipMode clip_mode_;
+  Clip clip_behavior_;
 
-  FXL_DISALLOW_COPY_AND_ASSIGN(ClipRectLayer);
+  FML_DISALLOW_COPY_AND_ASSIGN(ClipRectLayer);
 };
 
 }  // namespace flow
